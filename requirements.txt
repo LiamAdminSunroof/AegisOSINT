@@ -1,0 +1,31 @@
+anthropic>=0.50.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-dotenv>=1.0.0
+httpx>=0.27.0
+aiohttp>=3.9.0
+# Neo4j Aura — driver oficial Bolt/URI
+neo4j>=5.20.0
+# Firebase / Firestore
+google-cloud-firestore>=2.16.0
+google-cloud-storage>=2.16.0
+firebase-admin>=6.4.0
+google-auth>=2.29.0
+# Rate limiting
+slowapi>=0.1.9
+# Recolección web
+playwright>=1.44.0
+# Procesamiento de imágenes (EXIF)
+Pillow>=10.0.0
+pillow-heif>=0.16.0
+# STIX 2.1 export
+stix2>=3.0.1
+# Fuzzy matching para entity resolver
+thefuzz>=0.22.1
+python-Levenshtein>=0.25.0
+# Sentry error tracking
+sentry-sdk[fastapi]>=2.0.0
+# Secrets GCP
+google-cloud-secret-manager>=2.20.0
+# Requests (fallback módulos simples)
+requests>=2.31.0

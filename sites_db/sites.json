@@ -1,0 +1,162 @@
+[
+  {
+    "name": "GitHub",
+    "url_template": "https://github.com/{username}",
+    "error_text": "Not Found",
+    "family": "dev",
+    "tags": ["dev", "social"],
+    "profile_signals": ["repositories", "contributions", "followers"]
+  },
+  {
+    "name": "GitLab",
+    "url_template": "https://gitlab.com/{username}",
+    "error_text": "404",
+    "family": "dev",
+    "tags": ["dev"],
+    "profile_signals": ["projects", "groups"]
+  },
+  {
+    "name": "Twitter/X",
+    "url_template": "https://x.com/{username}",
+    "error_text": "This account doesn't exist",
+    "family": "social",
+    "tags": ["social"],
+    "profile_signals": ["followers", "following", "tweets"]
+  },
+  {
+    "name": "Instagram",
+    "url_template": "https://www.instagram.com/{username}/",
+    "error_text": "Sorry, this page isn't available",
+    "family": "social",
+    "tags": ["social"],
+    "profile_signals": ["followers", "following", "posts"]
+  },
+  {
+    "name": "LinkedIn",
+    "url_template": "https://www.linkedin.com/in/{username}",
+    "error_text": "Page not found",
+    "family": "professional",
+    "tags": ["social", "professional"],
+    "profile_signals": ["connections", "experience"]
+  },
+  {
+    "name": "Reddit",
+    "url_template": "https://www.reddit.com/user/{username}",
+    "error_text": "Sorry, nobody on Reddit goes by that name",
+    "family": "forums",
+    "tags": ["forums", "social"],
+    "profile_signals": ["karma", "post karma", "comment karma"]
+  },
+  {
+    "name": "YouTube",
+    "url_template": "https://www.youtube.com/@{username}",
+    "error_text": "This page isn't available",
+    "family": "social",
+    "tags": ["social", "video"],
+    "profile_signals": ["subscribers", "videos"]
+  },
+  {
+    "name": "TikTok",
+    "url_template": "https://www.tiktok.com/@{username}",
+    "error_text": "Couldn't find this account",
+    "family": "social",
+    "tags": ["social", "video"],
+    "profile_signals": ["followers", "following", "likes"]
+  },
+  {
+    "name": "Pinterest",
+    "url_template": "https://www.pinterest.com/{username}/",
+    "error_text": "Hmm, that page doesn't exist",
+    "family": "social",
+    "tags": ["social"],
+    "profile_signals": ["pins", "followers"]
+  },
+  {
+    "name": "Medium",
+    "url_template": "https://medium.com/@{username}",
+    "error_text": "404",
+    "family": "blog",
+    "tags": ["blog", "dev"],
+    "profile_signals": ["followers", "stories"]
+  },
+  {
+    "name": "Dev.to",
+    "url_template": "https://dev.to/{username}",
+    "error_text": "404: Not Found",
+    "family": "dev",
+    "tags": ["dev", "blog"],
+    "profile_signals": ["posts", "followers"]
+  },
+  {
+    "name": "HackerNews",
+    "url_template": "https://news.ycombinator.com/user?id={username}",
+    "error_text": "No such user",
+    "family": "forums",
+    "tags": ["dev", "forums"],
+    "profile_signals": ["karma", "about"]
+  },
+  {
+    "name": "Stack Overflow",
+    "url_template": "https://stackoverflow.com/users/{username}",
+    "error_text": "Page Not Found",
+    "family": "dev",
+    "tags": ["dev"],
+    "profile_signals": ["reputation", "answers", "questions"]
+  },
+  {
+    "name": "Keybase",
+    "url_template": "https://keybase.io/{username}",
+    "error_text": "Not found",
+    "family": "crypto",
+    "tags": ["crypto", "dev"],
+    "profile_signals": ["proofs", "followers"]
+  },
+  {
+    "name": "Telegram",
+    "url_template": "https://t.me/{username}",
+    "error_text": "If you have Telegram, you can contact",
+    "family": "messaging",
+    "tags": ["messaging", "social"],
+    "profile_signals": ["t.me"]
+  },
+  {
+    "name": "Twitch",
+    "url_template": "https://www.twitch.tv/{username}",
+    "error_text": "Sorry. Unless you've got a time machine",
+    "family": "gaming",
+    "tags": ["gaming", "video"],
+    "profile_signals": ["followers", "videos", "clips"]
+  },
+  {
+    "name": "Mastodon (mastodon.social)",
+    "url_template": "https://mastodon.social/@{username}",
+    "error_text": "The page you're looking for isn't here",
+    "family": "social",
+    "tags": ["social", "fediverse"],
+    "profile_signals": ["followers", "following", "toots"]
+  },
+  {
+    "name": "Behance",
+    "url_template": "https://www.behance.net/{username}",
+    "error_text": "Hmm, we can't find that page",
+    "family": "design",
+    "tags": ["design", "creative"],
+    "profile_signals": ["followers", "projects"]
+  },
+  {
+    "name": "Dribbble",
+    "url_template": "https://dribbble.com/{username}",
+    "error_text": "Whoops, that page is gone",
+    "family": "design",
+    "tags": ["design", "creative"],
+    "profile_signals": ["followers", "shots"]
+  },
+  {
+    "name": "Patreon",
+    "url_template": "https://www.patreon.com/{username}",
+    "error_text": "404",
+    "family": "monetization",
+    "tags": ["creator"],
+    "profile_signals": ["patrons", "supporters"]
+  }
+]
