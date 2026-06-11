@@ -1,6 +1,8 @@
 anthropic>=0.55.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
+# HTTP/2 cleartext (h2c) — requerido para Cloud Run port h2c
+h2>=4.0.0
 python-dotenv>=1.0.0
 httpx>=0.27.0
 aiohttp>=3.9.0
@@ -13,13 +15,8 @@ firebase-admin>=6.4.0
 google-auth>=2.29.0
 # Rate limiting
 slowapi>=0.1.9
-# Recolección web
-playwright>=1.44.0
-# Procesamiento de imágenes (EXIF)
+# Procesamiento de imágenes (EXIF) — Sprint 2+
 Pillow>=10.0.0
-pillow-heif>=0.16.0
-# STIX 2.1 export
-stix2>=3.0.1
 # Fuzzy matching para entity resolver
 thefuzz>=0.22.1
 python-Levenshtein>=0.25.0

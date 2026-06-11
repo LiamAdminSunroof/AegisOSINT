@@ -1,0 +1,13 @@
+.git
+.gitignore
+.dockerignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+tests/
+dashboard/
+AEGIS_MEMORY/
+*.md
+*.txt.bak
