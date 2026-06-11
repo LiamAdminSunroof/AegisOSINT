@@ -95,13 +95,18 @@ class AegisAnalyst:
         findings_text = _serialize_findings(findings)
         graph_text    = _serialize_graph(graph_context) if graph_context else "Grafo no disponible (Neo4j pendiente)."
 
+        graph_nodes = (graph_context or {}).get("nodes", [])
+        effective_cnt = len(findings) if findings else len(graph_nodes)
         prompt = f"""Analiza los siguientes findings OSINT del caso {case_id} para el objetivo `{selector_value}` ({selector_type}).
 
-## Findings recolectados ({len(findings)} total):
+## Findings directos recolectados ({len(findings)} total):
 {findings_text}
 
-## Grafo de relaciones Neo4j:
+## Grafo de relaciones Neo4j ({len(graph_nodes)} nodos persistidos):
 {graph_text}
+
+Nota: {effective_cnt} entidades totales disponibles (findings directos + nodos del grafo).
+Basa tu análisis en los NODOS DEL GRAFO si los findings directos son 0.
 
 Genera un dossier de inteligencia completo en Markdown siguiendo tu mandato.
 Incluye:
@@ -122,13 +127,14 @@ Si hay findings con sensitivity=HIGH, menciona SOLO "credencial cifrada detectad
         )
 
         dossier_md = response.content[0].text if response.content else ""
-        confidence = _estimate_confidence(findings)
+        findings_cnt = len(findings) if findings else len(graph_nodes)
+        confidence = _estimate_confidence(findings) if findings else _estimate_confidence_from_graph(graph_nodes)
 
         return {
             "dossier_md":   dossier_md,
             "confidence":   confidence,
             "model_used":   model,
-            "findings_cnt": len(findings),
+            "findings_cnt": findings_cnt,
             "generated_at": datetime.utcnow().isoformat(),
             "case_id":      case_id,
         }
@@ -189,8 +195,11 @@ def _serialize_graph(graph_context: dict) -> str:
         return "Grafo vacío."
     lines = [f"Nodos: {len(nodes)} | Relaciones: {len(edges)}"]
     for node in nodes[:20]:
-        data = node.get("data", {})
-        lines.append(f"  [{data.get('classes', '?')}] id={data.get('id', '?')} | {json.dumps({k: v for k, v in data.items() if k not in ('id',) and v}, ensure_ascii=False)[:150]}")
+        # "classes" está en la raíz del nodo (formato Cytoscape.js), propiedades en "data"
+        label = node.get("classes", "?")
+        data  = node.get("data", {})
+        props = {k: v for k, v in data.items() if k not in ("id",) and v}
+        lines.append(f"  [{label}] {json.dumps(props, ensure_ascii=False)[:160]}")
     if len(nodes) > 20:
         lines.append(f"  ... y {len(nodes) - 20} nodos más")
     return "\n".join(lines)
@@ -200,7 +209,22 @@ def _estimate_confidence(findings: list[Finding]) -> float:
     if not findings:
         return 0.0
     avg = sum(f.confidence for f in findings) / len(findings)
-    # Bonus por diversidad de plataformas
     platforms = len({f.platform for f in findings})
     bonus = min(0.1, platforms * 0.01)
+    return min(1.0, round(avg + bonus, 2))
+
+
+def _estimate_confidence_from_graph(nodes: list[dict]) -> float:
+    """Confianza estimada a partir de nodos del grafo cuando no hay findings directos."""
+    if not nodes:
+        return 0.0
+    confianzas = [
+        node.get("data", {}).get("confianza", 0.5)
+        for node in nodes
+        if node.get("data", {}).get("confianza") is not None
+    ]
+    if not confianzas:
+        return 0.5
+    avg = sum(confianzas) / len(confianzas)
+    bonus = min(0.1, len({node.get("classes") for node in nodes}) * 0.02)
     return min(1.0, round(avg + bonus, 2))
