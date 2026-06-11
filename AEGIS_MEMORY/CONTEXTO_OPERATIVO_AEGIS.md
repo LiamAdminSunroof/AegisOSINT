@@ -1,8 +1,8 @@
 # AEGIS MEMORY — CONTEXTO OPERATIVO
 ## Fuente de Verdad Persistente | Viaja con el Repositorio Git
 
-**Última actualización:** 2026-06-11 CLT — Sprint 1 completado
-**Revisión activa Cloud Run:** PENDIENTE PRIMER DEPLOY (Neo4j Aura aún requerido)
+**Última actualización:** 2026-06-11 CLT — Sprint 1 + Deploy OK
+**Revisión activa Cloud Run:** `aegis-osint-00006-4lb` (2026-06-11)
 **Actualizado por:** USR-001 — Lizardo Monsálvez
 
 ---
@@ -50,10 +50,10 @@ Mezcla objetivo: **65% Haiku / 30% Sonnet / 5% Fable 5**
 
 | Parámetro | Valor |
 |-----------|-------|
-| Tipo | AuraDB Free (o Professional) |
-| URI | PENDIENTE — crear en console.neo4j.io |
-| Secreto GCP | `NEO4J_URI` · `NEO4J_PASSWORD` |
-| Constraints aplicados | NO — ejecutar `bash scripts/01_setup_neo4j.sh` post-deploy |
+| Tipo | AuraDB Free |
+| URI | `neo4j+s://b1aec08a.databases.neo4j.io` (us-east1) |
+| Secreto GCP | `NEO4J_URI` ✅ · `NEO4J_PASSWORD` ✅ |
+| Constraints aplicados | ✅ — ejecutado 2026-06-11 |
 
 **CRITICAL:** Neo4j DEBE ser Aura (managed). Nunca local en Cloud Run — los datos del grafo se destruirían en cada restart de instancia.
 
@@ -65,9 +65,9 @@ Mezcla objetivo: **65% Haiku / 30% Sonnet / 5% Fable 5**
 |---------|--------|-------------|
 | `ANTHROPIC_API_KEY` | ✅ Activo (heredado de SAM) | API LLM |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | ✅ Activo (heredado de SAM) | Firestore DWD |
-| `NEO4J_URI` | ⏳ PENDIENTE | bolt+ssc://... de Aura |
-| `NEO4J_PASSWORD` | ⏳ PENDIENTE | Password generado en Aura |
-| `AEGIS_API_KEY` | ⏳ PENDIENTE | Shared secret con SAM Federation |
+| `NEO4J_URI` | ✅ Activo | bolt+ssc://b1aec08a.databases.neo4j.io |
+| `NEO4J_PASSWORD` | ✅ Activo | — |
+| `AEGIS_API_KEY` | ✅ Activo | Shared secret con SAM Federation |
 | `SHODAN_API_KEY` | ⏳ PENDIENTE Sprint 1 | Infra module |
 | `CENSYS_API_ID` + `CENSYS_API_SECRET` | ⏳ PENDIENTE Sprint 1 | Infra module |
 | `DEHASHED_API_KEY` | ⏳ PENDIENTE Sprint 1 | Breach module |
@@ -115,8 +115,8 @@ Mezcla objetivo: **65% Haiku / 30% Sonnet / 5% Fable 5**
 | 1.10 server.py — /analyze /graph /query /fusion endpoints | ✅ |
 | 1.11 deploy script — secretos opcionales | ✅ |
 | 1.12 requirements.txt + cryptography + dnspython | ✅ |
-| 1.13 Primer deploy Cloud Run `aegis-osint` | ⏳ Pendiente NEO4J |
-| 1.14 Smoke test end-to-end | ⏳ Pendiente deploy |
+| 1.13 Primer deploy Cloud Run `aegis-osint` | ✅ Rev 00006-4lb |
+| 1.14 Smoke test end-to-end | ✅ 7/7 tests PASSED |
 
 ---
 
@@ -175,15 +175,11 @@ AegisOSINT/
 
 ## PENDIENTES ACTIVOS
 
-| # | Item | Bloqueante |
-|---|------|-----------|
-| 1 | **Neo4j Aura Free** instance → `console.neo4j.io` | USR-001 MANUAL |
-| 2 | `NEO4J_URI` + `NEO4J_PASSWORD` en Secret Manager | Depende de #1 |
-| 3 | `AEGIS_API_KEY` en Secret Manager (shared secret con SAM) | USR-001 MANUAL |
-| 4 | **Primer deploy** `bash scripts/02_deploy_cloudrun_aegis.sh` | Depende de #2+#3 |
-| 5 | `bash scripts/01_setup_neo4j.sh` — constraints Neo4j | Depende de #4 |
-| 6 | Smoke test end-to-end (caso + username search + dossier) | Depende de #5 |
-| 7 | **Sprint 2:** IP recon module + Shodan + dork engine (SerpAPI) | Listo para iniciar |
+| # | Item | Estado |
+|---|------|--------|
+| 1 | **Sprint 2:** IP recon + Shodan module + dork engine (SerpAPI) | **LISTO PARA INICIAR** |
+| 2 | **SAM integration:** `AEGIS_API_URL`+`AEGIS_API_KEY` en SAM + `osint_request` en CYBER NODE | Pendiente SAM sprint |
+| 3 | Integración Dashboard — widget AEGIS en Sentinel V1 | Sprint 3+ |
 
 ---
 
@@ -198,6 +194,11 @@ Verificar post-deploy:
 ```bash
 curl https://aegis-osint-591203469479.us-central1.run.app/health
 ```
+
+**NOTAS CRÍTICAS DEPLOY:**
+- `--no-use-http2` OBLIGATORIO — uvicorn no soporta h2c prior knowledge (port name h2c → 502)
+- Sin `--workers` en CMD — Cloud Run maneja concurrencia externamente (igual que SAM)
+- Secrets opcionales (SHODAN/CENSYS/DEHASHED/SERPAPI) se auto-detectan en el script
 
 ---
 
