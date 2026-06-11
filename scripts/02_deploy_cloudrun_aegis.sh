@@ -8,6 +8,9 @@ PROJECT_ID="${1:-sunroof-agent-manager}"
 REGION="${2:-us-central1}"
 SERVICE="aegis-osint"
 
+# Ruta absoluta a gcloud (compatible con zbook Ubuntu)
+GCLOUD="${GCLOUD:-$(which gcloud 2>/dev/null || echo $HOME/google-cloud-sdk/bin/gcloud)}"
+
 echo ">>> Desplegando AEGIS en Cloud Run — $SERVICE @ $PROJECT_ID/$REGION"
 
 # ── Secretos REQUERIDOS ─────────────────────────────────────────────────────
@@ -18,13 +21,13 @@ GOOGLE_SERVICE_ACCOUNT_JSON=GOOGLE_SERVICE_ACCOUNT_JSON:latest"
 # ── Secretos NEO4J (requeridos para grafo) ──────────────────────────────────
 # Si aún no existen en Secret Manager, omitir y la app arrancará sin grafo.
 NEO4J_SECRETS=""
-if gcloud secrets describe NEO4J_URI --project="$PROJECT_ID" &>/dev/null; then
+if $GCLOUD secrets describe NEO4J_URI --project="$PROJECT_ID" &>/dev/null; then
   NEO4J_SECRETS="${NEO4J_SECRETS},NEO4J_URI=NEO4J_URI:latest"
   echo "  [OK] NEO4J_URI disponible"
 else
   echo "  [WARN] NEO4J_URI no existe aún — grafo desactivado hasta configurar Aura"
 fi
-if gcloud secrets describe NEO4J_PASSWORD --project="$PROJECT_ID" &>/dev/null; then
+if $GCLOUD secrets describe NEO4J_PASSWORD --project="$PROJECT_ID" &>/dev/null; then
   NEO4J_SECRETS="${NEO4J_SECRETS},NEO4J_PASSWORD=NEO4J_PASSWORD:latest"
   echo "  [OK] NEO4J_PASSWORD disponible"
 fi
@@ -32,7 +35,7 @@ fi
 # ── Secretos OPCIONALES de APIs OSINT ──────────────────────────────────────
 OPTIONAL_SECRETS=""
 for SECRET_NAME in SHODAN_API_KEY CENSYS_API_ID CENSYS_API_SECRET DEHASHED_API_KEY SERPAPI_KEY INTEL_X_API_KEY; do
-  if gcloud secrets describe "$SECRET_NAME" --project="$PROJECT_ID" &>/dev/null; then
+  if $GCLOUD secrets describe "$SECRET_NAME" --project="$PROJECT_ID" &>/dev/null; then
     OPTIONAL_SECRETS="${OPTIONAL_SECRETS},${SECRET_NAME}=${SECRET_NAME}:latest"
     echo "  [OK] $SECRET_NAME disponible"
   else
@@ -42,7 +45,7 @@ done
 
 ALL_SECRETS="${REQUIRED_SECRETS}${NEO4J_SECRETS}${OPTIONAL_SECRETS}"
 
-gcloud run deploy "$SERVICE" \
+$GCLOUD run deploy "$SERVICE" \
   --source . \
   --project "$PROJECT_ID" \
   --region "$REGION" \
@@ -52,14 +55,15 @@ gcloud run deploy "$SERVICE" \
   --concurrency 80 \
   --min-instances 0 \
   --max-instances 5 \
-  --http2 \
+  --allow-unauthenticated \
+  --no-use-http2 \
   --set-secrets="$ALL_SECRETS" \
   --service-account "sam-sunroof-agents@${PROJECT_ID}.iam.gserviceaccount.com" \
   --quiet
 
 echo ""
 echo ">>> Deploy completo. URL:"
-SERVICE_URL=$(gcloud run services describe "$SERVICE" \
+SERVICE_URL=$($GCLOUD run services describe "$SERVICE" \
   --project "$PROJECT_ID" \
   --region "$REGION" \
   --format "value(status.url)")
