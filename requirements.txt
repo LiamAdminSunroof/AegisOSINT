@@ -1,4 +1,4 @@
-anthropic>=0.50.0
+anthropic>=0.55.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 python-dotenv>=1.0.0
@@ -29,3 +29,7 @@ sentry-sdk[fastapi]>=2.0.0
 google-cloud-secret-manager>=2.20.0
 # Requests (fallback módulos simples)
 requests>=2.31.0
+# Cifrado AES-256-GCM para findings HIGH sensitivity (AEGIS §3.6)
+cryptography>=41.0.0
+# DNS resolution para módulo domain
+dnspython>=2.6.0

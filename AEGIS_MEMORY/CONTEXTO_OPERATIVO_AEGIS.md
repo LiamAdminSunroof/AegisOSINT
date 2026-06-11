@@ -1,8 +1,8 @@
 # AEGIS MEMORY — CONTEXTO OPERATIVO
 ## Fuente de Verdad Persistente | Viaja con el Repositorio Git
 
-**Última actualización:** 2026-06-10 CLT — Sprint 0 completado
-**Revisión activa Cloud Run:** PENDIENTE PRIMER DEPLOY
+**Última actualización:** 2026-06-11 CLT — Sprint 1 completado
+**Revisión activa Cloud Run:** PENDIENTE PRIMER DEPLOY (Neo4j Aura aún requerido)
 **Actualizado por:** USR-001 — Lizardo Monsálvez
 
 ---
@@ -88,7 +88,7 @@ Mezcla objetivo: **65% Haiku / 30% Sonnet / 5% Fable 5**
 | 0.6 core/graph_client.py | ✅ |
 | 0.7 collector/base_module.py + engine.py | ✅ |
 | 0.8 collector/modules/username/massive.py | ✅ |
-| 0.9 sites_db/sites.json (20 sitios) | ✅ |
+| 0.9 sites_db/sites.json (149 sitios → Sprint 1) | ✅ |
 | 0.10 server.py (FastAPI) | ✅ |
 | 0.11 scripts/ deploy + neo4j setup | ✅ |
 | 0.12 __init__.py en todos los packages | ✅ |
@@ -99,33 +99,66 @@ Mezcla objetivo: **65% Haiku / 30% Sonnet / 5% Fable 5**
 
 ---
 
+## SPRINT 1 — ESTADO (2026-06-11)
+
+| Item | Estado |
+|------|--------|
+| 1.1 sites_db expansión (149 sitios) | ✅ |
+| 1.2 core/crypto.py (AES-256-GCM) | ✅ |
+| 1.3 core/entity_resolver.py (HITL queue) | ✅ |
+| 1.4 core/graph_persister.py (Finding→Neo4j) | ✅ |
+| 1.5 collector/modules/email/mx_probe.py | ✅ |
+| 1.6 collector/modules/domain/dns_recon.py | ✅ |
+| 1.7 collector/modules/breach/dehashed.py | ✅ |
+| 1.8 agents/orchestrator.py (AEGIS_ORCHESTRATOR) | ✅ |
+| 1.9 agents/analyst.py (AEGIS_ANALYST) | ✅ |
+| 1.10 server.py — /analyze /graph /query /fusion endpoints | ✅ |
+| 1.11 deploy script — secretos opcionales | ✅ |
+| 1.12 requirements.txt + cryptography + dnspython | ✅ |
+| 1.13 Primer deploy Cloud Run `aegis-osint` | ⏳ Pendiente NEO4J |
+| 1.14 Smoke test end-to-end | ⏳ Pendiente deploy |
+
+---
+
 ## ARQUITECTURA DE MÓDULOS
 
 ```
 AegisOSINT/
-├── server.py              ← FastAPI entrypoint
+├── server.py              ← FastAPI entrypoint (Sprint 1: +4 endpoints)
 ├── config.py              ← Settings + secrets
 ├── AEGIS.md               ← Constitución / mandatos
 ├── Dockerfile
-├── requirements.txt
+├── requirements.txt       ← +cryptography +dnspython
+├── agents/
+│   ├── orchestrator.py    ← AEGIS_ORCHESTRATOR — triaje/validación Haiku L1
+│   └── analyst.py         ← AEGIS_ANALYST — dossier Sonnet L2 / Fable 5 L3
 ├── core/
 │   ├── ontology.py        ← EntityType, RelationType, BaseEntity, EntityRelation
 │   ├── case_manager.py    ← CaseManager + Firestore CRUD + WORM audit
-│   └── graph_client.py    ← Neo4j Aura driver (upsert + Cypher read-only)
+│   ├── graph_client.py    ← Neo4j Aura driver (upsert + Cypher read-only)
+│   ├── crypto.py          ← AES-256-GCM para findings HIGH sensitivity
+│   ├── entity_resolver.py ← Fuzzy match + HITL queue Firestore
+│   └── graph_persister.py ← Finding → Neo4j entities + relations
 ├── collector/
 │   ├── base_module.py     ← CollectorModule Protocol + Finding dataclass
 │   ├── engine.py          ← Fan-out async + circuit breaker + recursión
 │   └── modules/
-│       └── username/
-│           └── massive.py ← Maigret-style username checker (aiohttp fan-out)
+│       ├── username/
+│       │   └── massive.py ← Maigret-style (149 sitios)
+│       ├── email/
+│       │   └── mx_probe.py ← MX lookup + gravatar + disposable detection
+│       ├── domain/
+│       │   └── dns_recon.py ← DNS A/MX/TXT/NS/SOA + provider detection
+│       └── breach/
+│           └── dehashed.py ← DeHashed API (graceful fallback sin key)
 ├── sites_db/
-│   └── sites.json         ← 20 sitios Sprint 0 (→ 500+ Sprint 1)
+│   └── sites.json         ← 149 sitios (social, dev, gaming, latam, security)
 ├── tools/                 ← Tools SAM (Sprint 2+)
 ├── AEGIS_MEMORY/
 │   └── CONTEXTO_OPERATIVO_AEGIS.md
 └── scripts/
     ├── 01_setup_neo4j.sh  ← Aplica constraints en Aura
-    └── 02_deploy_cloudrun_aegis.sh
+    └── 02_deploy_cloudrun_aegis.sh ← Secretos opcionales (graceful skip)
 ```
 
 ---
@@ -144,12 +177,13 @@ AegisOSINT/
 
 | # | Item | Bloqueante |
 |---|------|-----------|
-| 1 | Neo4j Aura Free instance | USR-001 → console.neo4j.io |
+| 1 | **Neo4j Aura Free** instance → `console.neo4j.io` | USR-001 MANUAL |
 | 2 | `NEO4J_URI` + `NEO4J_PASSWORD` en Secret Manager | Depende de #1 |
-| 3 | `AEGIS_API_KEY` en Secret Manager (compartir con SAM) | USR-001 |
-| 4 | Primer deploy Cloud Run `aegis-osint` | Depende de #2 |
-| 5 | `bash scripts/01_setup_neo4j.sh` post-deploy | Depende de #4 |
-| 6 | Smoke test: crear caso + buscar username | Depende de #5 |
+| 3 | `AEGIS_API_KEY` en Secret Manager (shared secret con SAM) | USR-001 MANUAL |
+| 4 | **Primer deploy** `bash scripts/02_deploy_cloudrun_aegis.sh` | Depende de #2+#3 |
+| 5 | `bash scripts/01_setup_neo4j.sh` — constraints Neo4j | Depende de #4 |
+| 6 | Smoke test end-to-end (caso + username search + dossier) | Depende de #5 |
+| 7 | **Sprint 2:** IP recon module + Shodan + dork engine (SerpAPI) | Listo para iniciar |
 
 ---
 
@@ -167,4 +201,4 @@ curl https://aegis-osint-591203469479.us-central1.run.app/health
 
 ---
 
-*[ORIGEN: AEGIS_OSINT | VALIDACIÓN: SENTINEL_CORE_ADVERSARIAL | SEGURIDAD: ZERO_TRUST_VERIFIED | ESTADO: SPRINT_0_COMPLETO_PENDIENTE_NEO4J | ADMIN: LIZARDO MONSÁLVEZ TAPIA]*
+*[ORIGEN: AEGIS_OSINT | VALIDACIÓN: SENTINEL_CORE_ADVERSARIAL | SEGURIDAD: ZERO_TRUST_VERIFIED | ESTADO: SPRINT_1_COMPLETO_PENDIENTE_NEO4J_DEPLOY | ADMIN: LIZARDO MONSÁLVEZ TAPIA]*

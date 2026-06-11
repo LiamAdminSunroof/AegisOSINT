@@ -13,10 +13,17 @@ from config import MAX_CASE_DEPTH
 
 # Registro de módulos disponibles — se importan aquí
 from collector.modules.username.massive import UsernameChecker
+from collector.modules.email.mx_probe import EmailMxProbe
+from collector.modules.domain.dns_recon import DnsReconModule
+from collector.modules.breach.dehashed import DeHashedModule
 
 REGISTRY: dict[str, list[CollectorModule]] = {
-    SelectorType.USERNAME: [UsernameChecker()],
-    # Sprint 1: email, domain, ip, etc.
+    SelectorType.USERNAME: [UsernameChecker(), DeHashedModule()],
+    SelectorType.EMAIL:    [EmailMxProbe(), DeHashedModule()],
+    SelectorType.DOMAIN:   [DnsReconModule(), DeHashedModule()],
+    SelectorType.IP:       [],   # Sprint 2: ip_recon, shodan
+    SelectorType.PHONE:    [],   # Sprint 2: phone_recon
+    SelectorType.NAME:     [],   # Sprint 3: people_search
 }
 
 # Circuit breaker: módulo → contador de fallos consecutivos

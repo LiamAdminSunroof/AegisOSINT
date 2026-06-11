@@ -1,6 +1,8 @@
 """
-AEGIS FastAPI — Sprint 0 endpoints.
+AEGIS FastAPI — Sprint 1 endpoints.
 /health · /api/cases · /api/cases/{id} · /api/cases/{id}/search
+/api/cases/{id}/analyze · /api/cases/{id}/graph
+/api/entities/fusion (HITL queue) · /api/sam/dispatch
 """
 import os
 import json
@@ -8,7 +10,7 @@ from datetime import datetime
 from typing import Optional
 
 import sentry_sdk
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
@@ -21,6 +23,8 @@ from config import (
     AEGIS_ADMINS, AEGIS_ANALYSTS,
 )
 from core.case_manager import CaseManager, CaseStatus, LEGAL_BASIS_OPTIONS
+from core.graph_persister import GraphPersister
+from core.entity_resolver import EntityResolver
 from collector.engine import CollectionEngine
 from collector.base_module import SelectorType
 
@@ -48,8 +52,10 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-_case_mgr = CaseManager()
-_engine   = CollectionEngine()
+_case_mgr  = CaseManager()
+_engine    = CollectionEngine()
+_persister = GraphPersister()
+_resolver  = EntityResolver()
 
 
 # ── Auth helper ──────────────────────────────────────────────────────────────
@@ -85,6 +91,21 @@ class SearchRequest(BaseModel):
     selector_value: str
     tags:           list[str] = []
     max_depth:      int = 2
+    persist_graph:  bool = True    # persistir findings a Neo4j automáticamente
+
+
+class AnalyzeRequest(BaseModel):
+    escalate_l3: bool = False      # activar Fable 5 L3 para casos críticos
+
+
+class FusionApproveRequest(BaseModel):
+    reviewed_by: str
+    notes:       str = ""
+
+
+class FusionRejectRequest(BaseModel):
+    reviewed_by: str
+    reason:      str = ""
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -155,16 +176,29 @@ async def search(case_id: str, request: Request, body: SearchRequest):
             max_depth      = body.max_depth,
         )
         _case_mgr.update_status(case_id, CaseStatus.ANALYZING, user_id, f"findings={len(findings)}")
+
+        # Persistir en Neo4j si se solicita
+        persisted = 0
+        if body.persist_graph:
+            persisted = _persister.persist_findings(
+                findings       = findings,
+                case_id        = case_id,
+                selector_type  = sel_type,
+                selector_value = body.selector_value,
+            )
+
         return {
             "case_id":   case_id,
             "selector":  body.selector_value,
             "findings":  len(findings),
+            "persisted": persisted,
             "results":   [
                 {
-                    "platform":   f.platform,
-                    "url":        f.url,
-                    "confidence": f.confidence,
+                    "platform":    f.platform,
+                    "url":         f.url,
+                    "confidence":  f.confidence,
                     "entity_type": f.entity_type,
+                    "sensitivity": f.sensitivity.value,
                 }
                 for f in findings
             ],
@@ -179,6 +213,140 @@ async def search(case_id: str, request: Request, body: SearchRequest):
 @app.get("/api/legal-basis")
 async def get_legal_basis():
     return {"legal_basis_options": LEGAL_BASIS_OPTIONS}
+
+
+# ── Sprint 1: Análisis con AEGIS_ANALYST ──────────────────────────────────────
+@app.post("/api/cases/{case_id}/analyze")
+@limiter.limit("3/minute")
+async def analyze_case(case_id: str, request: Request, body: AnalyzeRequest):
+    """Genera dossier de inteligencia con AEGIS_ANALYST (Sonnet L2 / Fable 5 L3)."""
+    user_id = _get_user_id(request)
+    case    = _case_mgr.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Caso {case_id} no encontrado.")
+
+    try:
+        from agents.analyst import AegisAnalyst
+        analyst = AegisAnalyst()
+
+        # Intentar obtener el grafo del caso desde Neo4j
+        graph_ctx = None
+        try:
+            from core.graph_client import GraphClient
+            graph_ctx = GraphClient.get_case_graph(case_id)
+        except Exception:
+            pass  # Neo4j no disponible aún — dossier sin grafo
+
+        dossier = analyst.generate_dossier(
+            case_id        = case_id,
+            selector_type  = "unknown",
+            selector_value = case.target_selector,
+            findings       = [],   # findings ya en Neo4j; dossier se basa en el grafo
+            graph_context  = graph_ctx,
+            escalate_l3    = body.escalate_l3,
+        )
+
+        _case_mgr.update_status(case_id, CaseStatus.REPORTED, user_id, f"model={dossier['model_used']}")
+        _case_mgr.append_audit(case_id, "AEGIS_ANALYST", "DOSSIER_GENERATED",
+                                f"model={dossier['model_used']} confidence={dossier['confidence']}")
+        return dossier
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en análisis: {e}")
+
+
+@app.get("/api/cases/{case_id}/graph")
+async def get_case_graph(case_id: str, request: Request):
+    """Retorna el grafo Neo4j del caso para visualización (Cytoscape.js)."""
+    _get_user_id(request)
+    case = _case_mgr.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Caso {case_id} no encontrado.")
+    try:
+        from core.graph_client import GraphClient
+        graph = GraphClient.get_case_graph(case_id)
+        return {"case_id": case_id, "graph": graph}
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=f"Neo4j no disponible: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo grafo: {e}")
+
+
+@app.post("/api/cases/{case_id}/query")
+@limiter.limit("10/minute")
+async def query_graph_nl(case_id: str, request: Request):
+    """NL → Cypher query sobre el grafo del caso. Devuelve filas raw."""
+    user_id = _get_user_id(request)
+    case = _case_mgr.get_case(case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Caso {case_id} no encontrado.")
+    body = await request.json()
+    question = body.get("question", "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="'question' es requerido.")
+    try:
+        from agents.analyst import AegisAnalyst
+        analyst = AegisAnalyst()
+        result  = analyst.query_graph_nl(question, case_id)
+        return {"case_id": case_id, "question": question, "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en query: {e}")
+
+
+# ── Sprint 1: HITL Fusion Queue ───────────────────────────────────────────────
+@app.get("/api/entities/fusion/pending")
+async def list_fusion_pending(request: Request, limit: int = 50):
+    """Lista candidatos de fusión HITL pendientes (solo admins)."""
+    user_id = _get_user_id(request)
+    if user_id not in AEGIS_ADMINS:
+        raise HTTPException(status_code=403, detail="Solo administradores AEGIS.")
+    candidates = _resolver.list_pending(limit=limit)
+    return {"pending": candidates, "total": len(candidates)}
+
+
+@app.post("/api/entities/fusion/{resolve_id}/approve")
+async def approve_fusion(resolve_id: str, request: Request, body: FusionApproveRequest):
+    """Aprueba una fusión MISMO_ACTOR_QUE (HITL obligatorio — AEGIS §3.4)."""
+    _get_user_id(request)
+    try:
+        relation = _resolver.approve_fusion(
+            resolve_id  = resolve_id,
+            reviewed_by = body.reviewed_by,
+            notes       = body.notes,
+        )
+        # Persistir la relación en Neo4j
+        try:
+            from core.graph_client import GraphClient
+            GraphClient.upsert_relation(relation)
+        except Exception as e:
+            print(f"[fusion_approve] Neo4j no disponible para persistir relación: {e}")
+        return {
+            "resolve_id": resolve_id,
+            "status":     "APPROVED",
+            "relation":   {
+                "source": relation.source_id,
+                "target": relation.target_id,
+                "type":   relation.relation.value,
+                "confidence": relation.confianza,
+            },
+        }
+    except (PermissionError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/entities/fusion/{resolve_id}/reject")
+async def reject_fusion(resolve_id: str, request: Request, body: FusionRejectRequest):
+    """Rechaza una fusión propuesta."""
+    _get_user_id(request)
+    try:
+        _resolver.reject_fusion(
+            resolve_id  = resolve_id,
+            reviewed_by = body.reviewed_by,
+            reason      = body.reason,
+        )
+        return {"resolve_id": resolve_id, "status": "REJECTED"}
+    except (PermissionError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ── Federación SAM ────────────────────────────────────────────────────────────
