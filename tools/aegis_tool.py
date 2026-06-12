@@ -13,9 +13,11 @@ def osint_request(
     selector_type:  str,
     selector_value: str,
     purpose:        str,
-    requester_id:   str = "USR-001",
+    requester_id:   str  = "USR-001",
     tags:           list = None,
     max_depth:      int  = 2,
+    scope:          str  = "open_source_only",
+    legal_basis:    str  = "CL_threat_intelligence",
 ) -> dict:
     """
     Crea un caso AEGIS y ejecuta búsqueda OSINT. Retorna resumen de findings.
@@ -59,11 +61,11 @@ def osint_request(
             case_resp = client.post(
                 f"{base}/api/cases",
                 json={
-                    "title":       f"OSINT: {selector_type.upper()} — {selector_value}",
-                    "purpose":     purpose,
-                    "legal_basis": "legitimate_interest",
-                    "scope":       {"selector": selector_value, "type": selector_type},
-                    "operator_id": requester_id,
+                    "purpose":         purpose,
+                    "legal_basis":     legal_basis,
+                    "target_selector": selector_value,
+                    "authorized_by":   requester_id,
+                    "scope":           scope,
                 },
                 headers=headers,
             )
@@ -96,7 +98,9 @@ def osint_request(
                     "aegis_case_url": f"{base}/api/cases/{case_id}",
                 }
 
-            findings = search_resp.json().get("findings", [])
+            search_data    = search_resp.json()
+            findings_count = search_data.get("findings", 0)
+            results        = search_data.get("results", [])
 
     except httpx.TimeoutException:
         return {"error": f"AEGIS no respondió en {_TIMEOUT}s. El caso puede estar procesándose en background."}
@@ -107,10 +111,10 @@ def osint_request(
         "status":          "INVESTIGACION_COMPLETA",
         "case_id":         case_id,
         "selector":        f"{selector_type}:{selector_value}",
-        "findings_count":  len(findings),
+        "findings_count":  findings_count,
         "aegis_case_url":  f"{base}/api/cases/{case_id}",
         "aegis_graph_url": f"{base}/api/cases/{case_id}/graph",
-        "highlights":      _extract_highlights(findings),
+        "highlights":      _extract_highlights(results),
     }
 
 
