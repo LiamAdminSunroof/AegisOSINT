@@ -20,16 +20,24 @@ NEO4J_PASSWORD      = os.environ.get("NEO4J_PASSWORD", "")
 ANTHROPIC_API_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # ── APIS OSINT (Secret Manager) ───────────────────────────────────────────────
-SHODAN_API_KEY      = os.environ.get("SHODAN_API_KEY", "")
+# Tier 0 — gratuitas, sin costo mensual
+ABUSEIPDB_API_KEY   = os.environ.get("ABUSEIPDB_API_KEY", "")    # 1.000 req/día free
+VIRUSTOTAL_API_KEY  = os.environ.get("VIRUSTOTAL_API_KEY", "")   # 500 req/día free
+OTX_API_KEY         = os.environ.get("OTX_API_KEY", "")          # ilimitado free (registro)
+IPINFO_TOKEN        = os.environ.get("IPINFO_TOKEN", "")         # 50.000/mes free (opcional)
+
+# Tier 1+ — pendiente aprobación CFO (skip Sprint 2)
+SHODAN_API_KEY      = os.environ.get("SHODAN_API_KEY", "")       # $69/mes — skip por ahora
 CENSYS_API_ID       = os.environ.get("CENSYS_API_ID", "")
 CENSYS_API_SECRET   = os.environ.get("CENSYS_API_SECRET", "")
-DEHASHED_API_KEY    = os.environ.get("DEHASHED_API_KEY", "")
-SERPAPI_KEY         = os.environ.get("SERPAPI_KEY", "")
+DEHASHED_API_KEY    = os.environ.get("DEHASHED_API_KEY", "")     # $20-50/mes — fallback graceful
+SERPAPI_KEY         = os.environ.get("SERPAPI_KEY", "")          # $25/mes — skip Sprint 2
 INTEL_X_API_KEY     = os.environ.get("INTEL_X_API_KEY", "")
 
 # ── SAM FEDERATION ────────────────────────────────────────────────────────────
 SAM_API_URL         = os.environ.get("SAM_API_URL", "https://sam-sunroof-591203469479.us-central1.run.app")
 AEGIS_API_KEY       = os.environ.get("AEGIS_API_KEY", "")  # HMAC compartido con SAM
+AEGIS_API_URL       = os.environ.get("AEGIS_API_URL", "https://aegis-osint-591203469479.us-central1.run.app")
 
 # ── GOVERNANCE ────────────────────────────────────────────────────────────────
 DEFAULT_TTL_DAYS    = 90   # Retención de datos por defecto

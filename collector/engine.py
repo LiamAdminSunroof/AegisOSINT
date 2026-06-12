@@ -16,13 +16,16 @@ from collector.modules.username.massive import UsernameChecker
 from collector.modules.email.mx_probe import EmailMxProbe
 from collector.modules.domain.dns_recon import DnsReconModule
 from collector.modules.breach.dehashed import DeHashedModule
+from collector.modules.ip.ip_recon import IpReconModule
+from collector.modules.web.cert_transparency import CertTransparencyModule
+from collector.modules.threat.otx_module import OtxThreatModule
 
 REGISTRY: dict[str, list[CollectorModule]] = {
-    SelectorType.USERNAME: [UsernameChecker(), DeHashedModule()],
+    SelectorType.USERNAME: [UsernameChecker(), DeHashedModule(), OtxThreatModule()],
     SelectorType.EMAIL:    [EmailMxProbe(), DeHashedModule()],
-    SelectorType.DOMAIN:   [DnsReconModule(), DeHashedModule()],
-    SelectorType.IP:       [],   # Sprint 2: ip_recon, shodan
-    SelectorType.PHONE:    [],   # Sprint 2: phone_recon
+    SelectorType.DOMAIN:   [DnsReconModule(), DeHashedModule(), CertTransparencyModule(), OtxThreatModule()],
+    SelectorType.IP:       [IpReconModule(), OtxThreatModule()],
+    SelectorType.PHONE:    [],   # Sprint 3: phone_recon
     SelectorType.NAME:     [],   # Sprint 3: people_search
 }
 
