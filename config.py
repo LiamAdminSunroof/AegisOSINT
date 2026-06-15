@@ -36,7 +36,8 @@ INTEL_X_API_KEY     = os.environ.get("INTEL_X_API_KEY", "")
 
 # ── SAM FEDERATION ────────────────────────────────────────────────────────────
 SAM_API_URL         = os.environ.get("SAM_API_URL", "https://sam-sunroof-591203469479.us-central1.run.app")
-AEGIS_API_KEY       = os.environ.get("AEGIS_API_KEY", "")  # HMAC compartido con SAM
+AEGIS_API_KEY       = os.environ.get("AEGIS_API_KEY", "")        # HMAC compartido con SAM (auth only)
+AEGIS_ENCRYPTION_KEY = os.environ.get("AEGIS_ENCRYPTION_KEY", "") # AES-256 key — separado de AEGIS_API_KEY (FIX P1)
 AEGIS_API_URL       = os.environ.get("AEGIS_API_URL", "https://aegis-osint-591203469479.us-central1.run.app")
 
 # ── GOVERNANCE ────────────────────────────────────────────────────────────────

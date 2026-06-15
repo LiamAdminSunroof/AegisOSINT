@@ -15,11 +15,24 @@ except ImportError:
 
 
 def _get_key() -> bytes:
-    """Deriva la clave AES-256 desde AEGIS_API_KEY (shared secret). 32 bytes."""
-    raw = os.environ.get("AEGIS_API_KEY", "")
+    """
+    Deriva clave AES-256 desde AEGIS_ENCRYPTION_KEY (secreto dedicado — separado de AEGIS_API_KEY).
+    FIX P1: clave de cifrado independiente de la clave de autenticación.
+    Generar con: openssl rand -base64 32  → añadir a Secret Manager como AEGIS_ENCRYPTION_KEY.
+    """
+    raw = os.environ.get("AEGIS_ENCRYPTION_KEY", "")
     if not raw:
-        raise RuntimeError("AEGIS_API_KEY no configurado — no se puede cifrar datos HIGH.")
-    return hashlib.sha256(raw.encode()).digest()
+        raise RuntimeError(
+            "AEGIS_ENCRYPTION_KEY no configurado. "
+            "Genera con 'openssl rand -base64 32' y añade a Secret Manager."
+        )
+    try:
+        key = base64.b64decode(raw)
+    except Exception:
+        key = hashlib.sha256(raw.encode()).digest()
+    if len(key) not in (16, 24, 32):
+        raise RuntimeError(f"AEGIS_ENCRYPTION_KEY debe ser 16/24/32 bytes tras decodificar. Recibido: {len(key)}.")
+    return key
 
 
 def encrypt_high(plaintext: str) -> str:

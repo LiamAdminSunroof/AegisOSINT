@@ -4,12 +4,15 @@ AEGIS FastAPI — Sprint 1 endpoints.
 /api/cases/{id}/analyze · /api/cases/{id}/graph
 /api/entities/fusion (HITL queue) · /api/sam/dispatch
 """
+import hmac as _hmac
 import os
 import json
 from datetime import datetime
 from typing import Optional
 
 import sentry_sdk
+import firebase_admin
+from firebase_admin import credentials as fb_credentials, auth as fb_auth
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -32,11 +35,15 @@ from collector.base_module import SelectorType
 if SENTRY_DSN:
     sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=0.1, environment="production")
 
+# ── Firebase Admin (verificación JWT) ────────────────────────────────────────
+if not firebase_admin._apps:
+    firebase_admin.initialize_app()
+
 # ── Rate limiting ─────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
-app = FastAPI(title="AEGIS OSINT Platform", version="0.1.0")
+app = FastAPI(title="AEGIS OSINT Platform", version="0.2.0")
 app.state.limiter = limiter
 
 _ALLOWED_ORIGINS = [
@@ -49,7 +56,7 @@ app.add_middleware(
     allow_origins=_ALLOWED_ORIGINS,
     allow_origin_regex=r"https://.*\.sunroof-group\.com",
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-AEGIS-Key"],
 )
 
 _case_mgr  = CaseManager()
@@ -60,19 +67,36 @@ _resolver  = EntityResolver()
 
 # ── Auth helper ──────────────────────────────────────────────────────────────
 def _get_user_id(request: Request) -> str:
-    """Extrae user_id del header X-AEGIS-User o del body."""
-    uid = request.headers.get("X-AEGIS-User", "")
-    if not uid:
-        raise HTTPException(status_code=401, detail="X-AEGIS-User header requerido.")
+    """
+    FIX P2: Verifica Firebase ID Token (JWT) en lugar de aceptar X-AEGIS-User sin firma.
+    El header X-AEGIS-User era trivialmente falsificable por cualquiera que conociera un UID.
+    Ahora requiere Authorization: Bearer <firebase_id_token> criptográficamente firmado.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization: Bearer <firebase_token> requerido.")
+    token = auth_header.removeprefix("Bearer ").strip()
+    try:
+        decoded = fb_auth.verify_id_token(token)
+        uid = decoded.get("uid", "")
+    except fb_auth.ExpiredIdTokenError:
+        raise HTTPException(status_code=401, detail="Token expirado. Re-autentícate.")
+    except fb_auth.InvalidIdTokenError:
+        raise HTTPException(status_code=401, detail="Token Firebase inválido.")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Error de autenticación: {e}")
     if uid not in (AEGIS_ADMINS | AEGIS_ANALYSTS):
         raise HTTPException(status_code=403, detail="Usuario no autorizado en AEGIS.")
     return uid
 
 
 def _verify_api_key(request: Request) -> None:
-    """Verifica AEGIS_API_KEY para endpoints de federación SAM."""
+    """
+    FIX P4: usa hmac.compare_digest para prevenir timing attacks en comparación de API key.
+    La comparación == en strings es vulnerable a ataques de canal lateral por tiempo.
+    """
     key = request.headers.get("X-AEGIS-Key", "")
-    if not AEGIS_API_KEY or key != AEGIS_API_KEY:
+    if not AEGIS_API_KEY or not _hmac.compare_digest(key, AEGIS_API_KEY):
         raise HTTPException(status_code=403, detail="API key inválida.")
 
 
@@ -111,12 +135,26 @@ class FusionRejectRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
-    return {
+    """FIX M3: health check real que verifica conectividad con Firestore y Neo4j."""
+    status: dict = {
         "status":    "ok",
         "service":   "aegis-osint",
-        "version":   "0.1.0",
+        "version":   "0.2.0",
         "timestamp": datetime.utcnow().isoformat(),
     }
+    try:
+        _case_mgr.db.collection("_health").document("ping").set({"ts": datetime.utcnow().isoformat()})
+        status["firestore"] = "ok"
+    except Exception as e:
+        status["firestore"] = f"error: {e}"
+        status["status"] = "degraded"
+    try:
+        from core.graph_client import GraphClient
+        GraphClient.get_driver().verify_connectivity()
+        status["neo4j"] = "ok"
+    except Exception as e:
+        status["neo4j"] = f"unavailable: {e}"
+    return status
 
 
 @app.post("/api/cases")
@@ -140,10 +178,13 @@ async def create_case(request: Request, body: CreateCaseRequest):
 
 @app.get("/api/cases/{case_id}")
 async def get_case(case_id: str, request: Request):
-    _get_user_id(request)
+    user_id = _get_user_id(request)
     case = _case_mgr.get_case(case_id)
     if not case:
         raise HTTPException(status_code=404, detail=f"Caso {case_id} no encontrado.")
+    # FIX P5: analistas solo pueden ver sus propios casos; admins ven todos
+    if user_id not in AEGIS_ADMINS and case.created_by != user_id:
+        raise HTTPException(status_code=403, detail="Acceso denegado. Este caso no te pertenece.")
     return case.to_dict()
 
 
@@ -350,21 +391,64 @@ async def reject_fusion(resolve_id: str, request: Request, body: FusionRejectReq
 
 
 # ── Federación SAM ────────────────────────────────────────────────────────────
+async def _run_collection_background(case_id: str, sel_type: SelectorType, selector_value: str) -> None:
+    """
+    FIX M6: Dispara la recolección en background al recibir dispatch de SAM.
+    Sin esto el caso quedaba eternamente en DRAFT y SAM nunca recibía resultados.
+    """
+    try:
+        findings = await _engine.run_case(
+            case_id        = case_id,
+            selector_type  = sel_type,
+            selector_value = selector_value,
+            tags           = [],
+            max_depth      = 2,
+        )
+        _case_mgr.update_status(case_id, CaseStatus.ANALYZING, "SAM_CYBER_NODE",
+                                 f"findings={len(findings)}")
+        if findings:
+            _persister.persist_findings(
+                findings       = findings,
+                case_id        = case_id,
+                selector_type  = sel_type,
+                selector_value = selector_value,
+            )
+    except Exception as e:
+        _case_mgr.update_status(case_id, CaseStatus.DRAFT, "SYSTEM", f"Error background: {e}")
+        print(f"[sam_dispatch_bg] Error en recolección caso {case_id}: {e}")
+
+
 @app.post("/api/sam/dispatch")
-async def sam_dispatch(request: Request):
+async def sam_dispatch(request: Request, background_tasks: BackgroundTasks):
     """SAM CYBER NODE despacha investigación OSINT a AEGIS."""
     _verify_api_key(request)
     body = await request.json()
+
+    selector_value    = body.get("target_selector", "").strip()
+    selector_type_raw = body.get("selector_type", "domain")
+    try:
+        sel_type = SelectorType(selector_type_raw)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"selector_type inválido: {selector_type_raw}")
+
     try:
         case = _case_mgr.create_case(
             created_by      = "SAM_CYBER_NODE",
             purpose         = body.get("case_purpose", ""),
             legal_basis     = body.get("legal_basis", "CL_defensa_organizacion"),
-            target_selector = body.get("target_selector", ""),
+            target_selector = selector_value,
             authorized_by   = "USR-001",
             scope           = body.get("scope", "open_source_only"),
         )
-        return {"case_id": case.id, "status": "CREATED", "aegis_url": f"/api/sam/case/{case.id}/result"}
+        # FIX M6: disparar recolección en background inmediatamente
+        background_tasks.add_task(_run_collection_background, case.id, sel_type, selector_value)
+        _case_mgr.update_status(case.id, CaseStatus.COLLECTING, "SAM_CYBER_NODE",
+                                 f"selector={selector_value}")
+        return {
+            "case_id":   case.id,
+            "status":    "COLLECTING",
+            "aegis_url": f"/api/sam/case/{case.id}/result",
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

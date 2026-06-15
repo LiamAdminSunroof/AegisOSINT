@@ -1,8 +1,16 @@
-from neo4j import GraphDatabase, Driver
+import threading
 from typing import Optional, Any
+
+from neo4j import GraphDatabase, Driver
 
 from config import NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD
 from core.ontology import BaseEntity, EntityRelation, EntityType
+
+# FIX P6: whitelist inmutable de labels — previene Cypher injection via f-string
+_VALID_LABELS = frozenset(e.value for e in EntityType)
+
+# FIX M4: lock para inicialización thread-safe del singleton
+_driver_lock = threading.Lock()
 
 
 class GraphClient:
@@ -16,30 +24,41 @@ class GraphClient:
 
     @classmethod
     def get_driver(cls) -> Driver:
+        """FIX M4: double-checked locking para inicialización thread-safe del singleton."""
         if cls._driver is None:
-            if not NEO4J_URI or not NEO4J_PASSWORD:
-                raise RuntimeError(
-                    "NEO4J_URI y NEO4J_PASSWORD son obligatorios. "
-                    "Configura la instancia AuraDB en console.neo4j.io y "
-                    "añade los secretos en Secret Manager."
-                )
-            cls._driver = GraphDatabase.driver(
-                NEO4J_URI,
-                auth=(NEO4J_USERNAME, NEO4J_PASSWORD),
-            )
+            with _driver_lock:
+                if cls._driver is None:
+                    if not NEO4J_URI or not NEO4J_PASSWORD:
+                        raise RuntimeError(
+                            "NEO4J_URI y NEO4J_PASSWORD son obligatorios. "
+                            "Configura AuraDB en console.neo4j.io y añade secretos en Secret Manager."
+                        )
+                    cls._driver = GraphDatabase.driver(
+                        NEO4J_URI,
+                        auth=(NEO4J_USERNAME, NEO4J_PASSWORD),
+                    )
         return cls._driver
 
     @classmethod
     def close(cls) -> None:
-        if cls._driver:
-            cls._driver.close()
-            cls._driver = None
+        with _driver_lock:
+            if cls._driver:
+                cls._driver.close()
+                cls._driver = None
 
     @classmethod
     def upsert_entity(cls, entity: BaseEntity) -> None:
         """Crea o actualiza un nodo con propiedades de procedencia obligatorias."""
         entity.validate()  # lanza ValueError si falta confianza/fuente/origen_caso
         label = entity.entity_type.value
+
+        # FIX P6: validar label contra whitelist antes de interpolarlo en Cypher
+        if label not in _VALID_LABELS:
+            raise ValueError(
+                f"EntityType '{label}' no pertenece al esquema autorizado. "
+                f"Válidos: {sorted(_VALID_LABELS)}"
+            )
+
         props = {
             "id":          entity.id,
             "confianza":   entity.confianza,
@@ -117,13 +136,34 @@ class GraphClient:
         return {"nodes": list(nodes.values()), "edges": edges}
 
     @classmethod
-    def run_cypher(cls, cypher: str, params: dict = None) -> list[dict]:
-        """Ejecuta Cypher arbitrario (solo lectura) para AEGIS_ANALYST."""
-        if any(kw in cypher.upper() for kw in ("CREATE", "MERGE", "DELETE", "SET", "REMOVE")):
-            raise PermissionError("run_cypher es de solo lectura. Usa upsert_entity/upsert_relation para escritura.")
+    def query_case_nodes(cls, case_id: str, entity_type: Optional[str] = None,
+                         limit: int = 500) -> list[dict]:
+        """
+        FIX P3: Reemplaza run_cypher() que aceptaba Cypher arbitrario de Claude (peligroso).
+        API de solo lectura tipada y parametrizada — sin posibilidad de inyección.
+        """
+        if entity_type is not None and entity_type not in _VALID_LABELS:
+            raise ValueError(f"entity_type '{entity_type}' no válido. Válidos: {sorted(_VALID_LABELS)}")
+        if entity_type:
+            cypher = f"MATCH (n:{entity_type} {{origen_caso: $case_id}}) RETURN n LIMIT $limit"
+        else:
+            cypher = "MATCH (n {origen_caso: $case_id}) RETURN n LIMIT $limit"
         with cls.get_driver().session() as session:
-            result = session.run(cypher, **(params or {}))
-            return [dict(record) for record in result]
+            result = session.run(cypher, case_id=case_id, limit=limit)
+            return [dict(record["n"]) for record in result]
+
+    @classmethod
+    def query_entity_relations(cls, entity_id: str, depth: int = 1) -> dict:
+        """Retorna relaciones de un nodo hasta profundidad 3 — solo lectura, parametrizado."""
+        depth = min(max(depth, 1), 3)
+        cypher = f"""
+        MATCH path = (n {{id: $entity_id}})-[*1..{depth}]-(m)
+        RETURN n, relationships(path) AS rels, collect(m) AS neighbors
+        LIMIT 200
+        """
+        with cls.get_driver().session() as session:
+            result = session.run(cypher, entity_id=entity_id)
+            return {"entity_id": entity_id, "depth": depth, "rows": [dict(r) for r in result]}
 
     @classmethod
     def apply_constraints(cls) -> None:
