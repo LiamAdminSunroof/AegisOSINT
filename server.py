@@ -78,7 +78,7 @@ def _get_user_id(request: Request) -> str:
     token = auth_header.removeprefix("Bearer ").strip()
     try:
         decoded = fb_auth.verify_id_token(token)
-        uid = decoded.get("uid", "")
+        uid = decoded.get("email", "")
     except fb_auth.ExpiredIdTokenError:
         raise HTTPException(status_code=401, detail="Token expirado. Re-autentícate.")
     except fb_auth.InvalidIdTokenError:
@@ -155,6 +155,22 @@ async def health():
     except Exception as e:
         status["neo4j"] = f"unavailable: {e}"
     return status
+
+
+@app.post("/api/admin/constraints")
+async def apply_neo4j_constraints(request: Request):
+    """
+    One-shot admin endpoint — crea constraints e índices de unicidad en Neo4j Aura.
+    Protegido por X-AEGIS-Key (solo USR-001 / operaciones de setup).
+    Idempotente: IF NOT EXISTS en cada constraint.
+    """
+    _verify_api_key(request)
+    from core.graph_client import GraphClient
+    try:
+        GraphClient.apply_constraints()
+        return {"status": "ok", "message": "Constraints aplicados en Neo4j Aura."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/cases")

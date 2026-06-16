@@ -46,9 +46,9 @@ MAX_CASE_DEPTH      = 3    # Profundidad máxima de recursión en recolección
 MIN_PURPOSE_LEN     = 50   # Caracteres mínimos en purpose del caso
 
 # ── RBAC — usuarios autorizados ───────────────────────────────────────────────
-AEGIS_ADMINS        = {"USR-001"}
-AEGIS_ANALYSTS      = {"USR-001", "USR-006"}   # OPS puede investigar superficie OT
-AEGIS_VIEWERS       = {"USR-001", "USR-006", "USR-003"}
+AEGIS_ADMINS        = {"lizardo.monsalvez@sunroof-group.com"}
+AEGIS_ANALYSTS      = {"lizardo.monsalvez@sunroof-group.com", "nicolas.patrickson@sunroof-group.com"}
+AEGIS_VIEWERS       = {"lizardo.monsalvez@sunroof-group.com", "nicolas.patrickson@sunroof-group.com", "andres@sunroof-group.com"}
 
 # ── SCORING DE CONFIANZA por tipo de detección ────────────────────────────────
 CONFIDENCE_THRESHOLDS = {
